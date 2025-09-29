@@ -10,11 +10,12 @@
 
   },
 
-"dependencies": {
-  "gaussian-splats-3d": "file:src/lib/gaussian-splats-3d.module.js",
-  "leaflet": "^1.9.4",
-  "three": "^0.163.0"
-}
+
+  "dependencies": {
+    "gaussian-splats-3d": "file:lib/gaussian-splats-3d.module.js",
+    "leaflet": "^1.9.4",
+    "three": "^0.163.0"
+  }
 ,
 
   "devDependencies": {
