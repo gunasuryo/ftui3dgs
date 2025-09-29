@@ -11,7 +11,7 @@
   },
 
 "dependencies": {
-  "@mkkellogg/gaussian-splats-3d": "^0.1.15", 
+  "gaussian-splats-3d": "file:src/lib/gaussian-splats-3d.module.js",
   "leaflet": "^1.9.4",
   "three": "^0.163.0"
 }
