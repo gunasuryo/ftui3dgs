@@ -10,13 +10,12 @@
 
   },
 
-  "dependencies": {
-
-    "leaflet": "^1.9.4",
-
-    "three": "^0.163.0"
-
-  },
+"dependencies": {
+  "@mkkellogg/gaussian-splats-3d": "^0.1.15", 
+  "leaflet": "^1.9.4",
+  "three": "^0.163.0"
+}
+,
 
   "devDependencies": {
 
