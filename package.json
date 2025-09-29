@@ -1,0 +1,28 @@
+{
+
+  "module": "gaussian-splats-3d.module.js",
+
+  "type": "module",
+
+  "scripts": {
+
+    "dev": "node util/server.js -d ."
+
+  },
+
+  "dependencies": {
+
+    "leaflet": "^1.9.4",
+
+    "three": "^0.163.0"
+
+  },
+
+  "devDependencies": {
+
+    "vite": "^5.2.7"
+
+  }
+
+}
+

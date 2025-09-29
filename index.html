@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <title>3D Gaussian Splat Viewer Examples</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="importmap">
+    {
+        "imports": {
+            "three": "./lib/three.module.js",
+            "gaussian-splats-3d": "./lib/gaussian-splats-3d.module.js"
+        }
+    }
+  </script>
+  <script>
+    let currentAlphaRemovalThreshold;
+    let currentCameraUpArray;
+    let currentCameraPositionArray;
+    let currentCameraLookAtArray;
+  </script>
+  <!-- Linking Gaussian Splatting ThreeJS Module -->
+  <script type="module">
+    import * as GaussianSplats3D from 'gaussian-splats-3d';
+
+    function convertPLYToSplatBuffer(plyBuffer, compressionLevel, alphaRemovalThreshold, blockSize, bucketSize) {
+      const plyParser = new GaussianSplats3D.PlyParser(plyBuffer);
+      return plyParser.parseToSplatBuffer(compressionLevel, alphaRemovalThreshold, blockSize, bucketSize);
+    }
+
+    function convertStandardSplatToSplatBuffer(bufferData, compressionLevel, alphaRemovalThreshold, blockSize, bucketSize){
+      const splatArray = GaussianSplats3D.SplatLoader.parseStandardSplatToUncompressedSplatArray(bufferData);
+      const splatCompressor = new GaussianSplats3D.SplatCompressor(compressionLevel, alphaRemovalThreshold, blockSize, bucketSize);
+      return splatCompressor.uncompressedSplatArrayToSplatBuffer(splatArray);
+    }
+
+    function isPlyFile(fileName) {
+      return fileName.toLowerCase().trim().endsWith('.ply');
+    }
+
+    function fileBufferToSplatBuffer(fileBufferData, isPly, isStandardSplat, compressionLevel, alphaRemovalThreshold, blockSize, bucketSize) {
+      let splatBuffer;
+      if (isPly) {
+        splatBuffer = convertPLYToSplatBuffer(fileBufferData, compressionLevel, alphaRemovalThreshold, blockSize, bucketSize);
+      } else {
+        if (isStandardSplat) {
+          splatBuffer = convertStandardSplatToSplatBuffer(fileBufferData, compressionLevel, alphaRemovalThreshold, blockSize, bucketSize);
+        } else {
+          splatBuffer = new GaussianSplats3D.SplatBuffer(fileBufferData);
+        }
+      }
+      return splatBuffer;
+    }
+
+    window.onCompressionLevelChange = function(arg) {
+      const compressionLevel = parseInt(document.getElementById("compressionLevel").value);
+      if (isNaN(compressionLevel) || compressionLevel < 0 || compressionLevel > 1) {
+        return;
+      }
+
+      for (let i = 1; i <= 3; i++) {
+        const element = document.getElementById('advancedCompressionRow' + i);
+        if (compressionLevel === 0) {
+          element.style.display = 'none';
+        } else {
+          element.style.display = '';
+        }
+      }
+    }
+
+    window.onFileChange = function(arg, fileNameLabelID) {
+      const fileNameLabel = document.getElementById(fileNameLabelID);
+      const url = arg.value;
+      let lastForwardSlash = url.lastIndexOf('/');
+      let lastBackwardSlash = url.lastIndexOf('\\');
+      const lastSlash = Math.max(lastForwardSlash, lastBackwardSlash);
+      fileNameLabel.innerHTML = url.substring(lastSlash + 1);
+    }
+
+    let conversionInProgress = false;
+    window.convertPlyFile = function() {
+      if (conversionInProgress) return;
+      const conversionFile = document.getElementById("conversionFile");
+      const compressionLevel = parseInt(document.getElementById("compressionLevel").value);
+      const alphaRemovalThreshold = parseInt(document.getElementById("alphaRemovalThreshold").value);
+      const blockSize = parseFloat(document.getElementById("blockSize").value);
+      const bucketSize = parseInt(document.getElementById("bucketSize").value);
+
+      if (isNaN(compressionLevel) || compressionLevel < 0 || compressionLevel > 1) {
+        setConversionError("Invalid compression level.");
+        return;
+      } else if (isNaN(alphaRemovalThreshold) || alphaRemovalThreshold <0 || alphaRemovalThreshold > 255) {
+        setConversionError("Invalid alpha remval threshold.");
+        return;
+      } else if (isNaN(blockSize) || blockSize < 0.1) {
+        setConversionError("Invalid block size.");
+        return;
+      } else if (isNaN(bucketSize) || bucketSize < 2 || bucketSize > 65536) {
+        setConversionError("Invalid bucket size.");
+        return;
+      } else if (!conversionFile.files[0]) {
+        setConversionError("Please choose a file to convert.");
+        return;
+      }
+
+      setConversionError("");
+      const convertButton = document.getElementById("convertButton");
+
+      const conversionDone = (error) => {
+        if (error) {
+          console.error(error);
+          setConversionError("Could not convert file.");
+        } else {
+          setConversionStatus("Conversion complete!");
+          setConversionLoadingIconVisibility(false);
+          setConversionCheckIconVisibility(true);
+        }
+        convertButton.disabled = false;
+        conversionInProgress = false;
+      }
+
+      try {
+        const fileReader = new FileReader();
+        fileReader.onload = function(){
+          convertButton.disabled = true;
+          setConversionStatus("Parsing file...");
+          setConversionLoadingIconVisibility(true);
+          setConversionCheckIconVisibility(false);
+          const conversionFileName = conversionFile.files[0].name;
+          const isPly = isPlyFile(conversionFileName);
+          const isStandardSplat = GaussianSplats3D.SplatLoader.isStandardSplatFormat(conversionFileName);
+          window.setTimeout(() => {
+            try {
+              const splatBuffer = fileBufferToSplatBuffer(fileReader.result, isPly, isStandardSplat, compressionLevel,
+                                                          alphaRemovalThreshold, blockSize, bucketSize);
+              new GaussianSplats3D.SplatLoader(splatBuffer).downloadFile('converted_file.ksplat');
+              conversionDone();
+            } catch (e) {
+              conversionDone(e);
+            }
+          }, 100);
+        }
+        conversionInProgress = true;
+        setConversionStatus("Loading file...");
+        setConversionLoadingIconVisibility(true);
+        fileReader.readAsArrayBuffer(conversionFile.files[0]);
+      } catch (e) {
+        conversionDone(e);
+      }
+    }
+
+    function setConversionError(msg) {
+      setConversionLoadingIconVisibility(false);
+      setConversionCheckIconVisibility(false);
+      document.getElementById("conversionStatus").innerHTML = "";
+      document.getElementById("conversionError").innerHTML = msg;
+    }
+
+    function setConversionStatus(msg) {
+      document.getElementById("conversionError").innerHTML = "";
+      document.getElementById("conversionStatus").innerHTML = msg;
+    }
+
+    function setConversionLoadingIconVisibility(visible) {
+      document.getElementById('conversion-loading-icon').style.display = visible ? 'block' : 'none';
+    }
+
+    function setConversionCheckIconVisibility(visible) {
+      document.getElementById('check-icon').style.display = visible ? 'block' : 'none';
+    }
+
+    window.viewSplat = function() {
+
+      const viewFile = document.getElementById("viewFile");
+      const alphaRemovalThreshold = parseInt(document.getElementById("alphaRemovalThresholdView").value);
+
+      let cameraUpArray = document.getElementById("cameraUp").value;
+      let cameraPositionArray = document.getElementById("cameraPosition").value;
+      let cameraLookAtArray = document.getElementById("cameraLookAt").value;
+
+      cameraUpArray = cameraUpArray.split(',');
+      cameraPositionArray = cameraPositionArray.split(',');
+      cameraLookAtArray = cameraLookAtArray.split(',');
+
+      if (!viewFile.files[0]) {
+        setViewError("Please choose a file to view.");
+        return;
+      } else if (isNaN(alphaRemovalThreshold) || alphaRemovalThreshold < 0 || alphaRemovalThreshold > 255) {
+        setViewError("Invalid alpha remval threshold.");
+        return;
+      }
+
+      if (cameraUpArray.length !== 3) {
+        setViewError("Camera up must contain 3 elements.");
+        return;
+      }
+
+      if (cameraPositionArray.length !== 3) {
+        setViewError("Camera position must contain 3 elements.");
+        return;
+      }
+
+      if (cameraLookAtArray.length !== 3) {
+        setViewError("Camera look-at must contain 3 elements.");
+        return;
+      }
+
+      for (let i = 0; i < 3; i++) {
+        cameraUpArray[i] = parseFloat(cameraUpArray[i]);
+        cameraPositionArray[i] = parseFloat(cameraPositionArray[i]);
+        cameraLookAtArray[i] = parseFloat(cameraLookAtArray[i]);
+
+        if (isNaN(cameraUpArray[i])) {
+          setViewError("Invalid camera up.");
+          return;
+        }
+
+        if (isNaN(cameraPositionArray[i])) {
+          setViewError("Invalid camera position.");
+          return;
+        }
+
+        if (isNaN(cameraLookAtArray[i])) {
+          setViewError("Invalid camera look-at.");
+          return;
+        }
+      }
+
+      const viewFileName = viewFile.files[0].name;
+      const isPly = isPlyFile(viewFileName);
+      const isStandardSplat = GaussianSplats3D.SplatLoader.isStandardSplatFormat(viewFileName);
+
+      currentAlphaRemovalThreshold = alphaRemovalThreshold;
+      currentCameraUpArray = cameraUpArray;
+      currentCameraPositionArray = cameraPositionArray;
+      currentCameraLookAtArray = cameraLookAtArray;
+      try {
+        const fileReader = new FileReader();
+        fileReader.onload = function(){
+          try {
+           runViewer(fileReader.result, isPly, isStandardSplat, alphaRemovalThreshold, cameraUpArray, cameraPositionArray, cameraLookAtArray);
+          } catch (e) {
+            setViewError("Could not view scene.");
+          }
+        }
+        setViewStatus("Loading scene...");
+        fileReader.readAsArrayBuffer(viewFile.files[0]);
+      } catch (e) {
+        console.error(e);
+        setViewError("Could not view scene.");
+      }
+    }
+
+    function setViewError(msg) {
+      setViewLoadingIconVisibility(false);
+      document.getElementById("viewStatus").innerHTML = "";
+      document.getElementById("viewError").innerHTML = msg;
+    }
+
+    function setViewStatus(msg) {
+      setViewLoadingIconVisibility(true);
+      document.getElementById("viewError").innerHTML = "";
+      document.getElementById("viewStatus").innerHTML = msg;
+    }
+
+    function setViewLoadingIconVisibility(visible) {
+      document.getElementById('view-loading-icon').style.display = visible ? 'block' : 'none';
+    }
+  
+    window.addEventListener("popstate", (event) => {
+      if (currentAlphaRemovalThreshold !== undefined) {
+        window.location = 'index.html?art=' + currentAlphaRemovalThreshold + '&cu=' + currentCameraUpArray + "&cp=" + currentCameraPositionArray + "&cla=" + currentCameraLookAtArray;
+      } else {
+        window.location = 'index.html';
+      }
+    });
+
+    function runViewer(splatBufferData, isPly, isStandardSplat, alphaRemovalThreshold, cameraUpArray, cameraPositionArray, cameraLookAtArray) {
+      const viewerOptions = {
+        'cameraUp': cameraUpArray,
+        'initialCameraPosition': cameraPositionArray,
+        'initialCameraLookAt': cameraLookAtArray,
+        'halfPrecisionCovariancesOnGPU': true,
+      };
+      const splatBufferOptions = {
+        'splatAlphaRemovalThreshold': alphaRemovalThreshold
+      };
+
+      const splatBuffer = fileBufferToSplatBuffer(splatBufferData, isPly, isStandardSplat, 0, alphaRemovalThreshold);
+      document.getElementById("demo-content").style.display = 'none';
+      document.body.style.backgroundColor = "#000000";
+      history.pushState("ViewSplat", null);
+      const viewer = new GaussianSplats3D.Viewer(viewerOptions);
+      viewer.addSplatBuffers([splatBuffer], [splatBufferOptions])
+      .then(() => {
+          viewer.start();
+      });
+    }
+
+  </script>
+
+  <script>
+    function openDemo(demoName) {
+      window.location = demoName + '.html';
+    }
+    function reset() {
+      window.location = 'index.html';
+    }
+  </script>
+  <!-- link to index.js -->
+   <script src="./index.js" charset="utf-8" defer></script>
+  <!-- Integrating Leaflet library -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+  crossorigin=""></script>
+<body>
+
+		<div class="demo-scene-panel" onclick="openDemo('kolam_ftui')">
+			<img src="assets/images/kolam_ftui.png" class="demo-scene-panel-image">
+			<span class="small-title">Kolam FTUI</span>
+	  	</div>
+    <div class="demo-scene-panel" onclick="openDemo('gdk_lift')">
+      <img src="assets/images/gdk_lift.png" class="demo-scene-panel-image">
+      <span class="small-title">Lift gedung K</span>
+      </div>
+    <div class="demo-scene-panel" onclick="openDemo('ftui_stone_wall')">
+      <img src="assets/images/ftui_stone_wall.png" class="demo-scene-panel-image">
+      <span class="small-title">Papan Nama FTUI</span>
+      </div>
+    <div class="demo-scene-panel" onclick="openDemo('ftui_golf_kart')">
+      <img src="assets/images/ftui_golf_kart.png" class="demo-scene-panel-image">
+      <span class="small-title">Golf Kart FTUI</span>
+      </div>
+    <div class="demo-scene-panel" onclick="openDemo('ec_kantek')">
+      <img src="assets/images/ec_kantek.png" class="demo-scene-panel-image">
+      <span class="small-title">Jalan EC - Kantek</span>
+      </div>  
+    <div class="demo-scene-panel" onclick="openDemo('ft_crossing')">
+      <img src="assets/images/ft_crossing.png" class="demo-scene-panel-image">
+      <span class="small-title">Penyebrangan halte bikun FT</span>
+      </div>  
+    <div class="demo-scene-panel" onclick="openDemo('rotunda_full')">
+      <img src="assets/images/rotunda_full.png" class="demo-scene-panel-image">
+      <span class="small-title">Rotunda full</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('rotunda_gds')">
+      <img src="assets/images/rotunda_gds.png" class="demo-scene-panel-image">
+      <span class="small-title">Jalan Rotunda ke Gedung S</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('gdk_lobby')">
+      <img src="assets/images/gdk_lobby.png" class="demo-scene-panel-image">
+      <span class="small-title">Lobby Gedung K</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('dekanat_back')">
+      <img src="assets/images/dekanat_back.png" class="demo-scene-panel-image">
+      <span class="small-title">Belakang Dekanat</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('gds_side')">
+      <img src="assets/images/gds_side.png" class="demo-scene-panel-image">
+      <span class="small-title">Jalan antara Gd.S - DTS</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('gds_front')">
+      <img src="assets/images/gds_front.png" class="demo-scene-panel-image">
+      <span class="small-title">Koridor depan Gd.S</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('paf_ftui')">
+      <img src="assets/images/paf_ftui.png" class="demo-scene-panel-image">
+      <span class="small-title">Koridor PAF FTUI</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('gds_back')">
+      <img src="assets/images/gds_back.png" class="demo-scene-panel-image">
+      <span class="small-title">Belakang Gedung S</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('rotunda_gate')">
+      <img src="assets/images/rotunda_gate.png" class="demo-scene-panel-image">
+      <span class="small-title">Rotunda FT (bagian dekat gerbang)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('teksas_upwards')">
+      <img src="assets/images/teksas_upwards.png" class="demo-scene-panel-image">
+      <span class="small-title">Ujung Jembatan Teksas</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('teksas_tugu')">
+      <img src="assets/images/teksas_tugu.png" class="demo-scene-panel-image">
+      <span class="small-title">Tugu jembatan teksas</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('teksas_bridge')">
+      <img src="assets/images/teksas_bridge.png" class="demo-scene-panel-image">
+      <span class="small-title">Melintasi Jembatan Teksas</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('dte_koridor')">
+      <img src="assets/images/dte_koridor.png" class="demo-scene-panel-image">
+      <span class="small-title">Koridor DTE</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('slobby_shaking')">
+      <img src="assets/images/slobby_shaking.png" class="demo-scene-panel-image">
+      <span class="small-title">Lobby Gd.S (Input kamera bergoyang)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('slobby_up_down')">
+      <img src="assets/images/slobby_up_down.png" class="demo-scene-panel-image">
+      <span class="small-title">Lobby Gd.S (Input kamera stabil keatas bawah)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('slobby_high')">
+      <img src="assets/images/slobby_high.png" class="demo-scene-panel-image">
+      <span class="small-title">Lobby Gd.S (Input kamera dari 2m, arah kebawah)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('slobby_middle')">
+      <img src="assets/images/slobby_middle.png" class="demo-scene-panel-image">
+      <span class="small-title">Lobby Gd.S (Input kamera dari 1.5m, arah lurus)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('slobby_low')">
+      <img src="assets/images/slobby_low.png" class="demo-scene-panel-image">
+      <span class="small-title">Lobby Gd.S (Input kamera dari 1m, arah keatas)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('s101_static_rotate')">
+      <img src="assets/images/s101_static_rotate.png" class="demo-scene-panel-image">
+      <span class="small-title">Ruang kelas S101 (kamera memutari 1 kursi)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('s101_circling')">
+      <img src="assets/images/s101_circling.png" class="demo-scene-panel-image">
+      <span class="small-title">Ruang kelas S101 (kamera memutari seluruh ruangan)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('slobby_block')">
+      <img src="assets/images/slobby_block.png" class="demo-scene-panel-image">
+      <span class="small-title">Batu di Lobby Gd.S</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('chair_up_down')">
+      <img src="assets/images/chair_up_down.png" class="demo-scene-panel-image">
+      <span class="small-title">Kursi S101 (kamera keatas bawah)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('chair_middle')">
+      <img src="assets/images/chair_middle.png" class="demo-scene-panel-image">
+      <span class="small-title">Kursi S101 (kamera lurus)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('chair_low')">
+      <img src="assets/images/chair_low.png" class="demo-scene-panel-image">
+      <span class="small-title">Kursi S101 (kamera dari bawah)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('chair_high')">
+      <img src="assets/images/chair_high.png" class="demo-scene-panel-image">
+      <span class="small-title">Kursi S101 (kamera dari atas)</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('icell')">
+      <img src="assets/images/icell.png" class="demo-scene-panel-image">
+      <span class="small-title">Jalan depan Gd. i-cell</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('dts_koridor')">
+      <img src="assets/images/dts_koridor.png" class="demo-scene-panel-image">
+      <span class="small-title">Koridor DTS</span>
+    </div>  
+    <div class="demo-scene-panel" onclick="openDemo('lift_city_hall')">
+      <img src="assets/images/lift_city_hall.png" class="demo-scene-panel-image">
+      <span class="small-title">Lift di Balai Kota Nusantara</span>
+
+    
+  <!-- Interactive map of FTUI using leaflet -->
+  <!-- <div id="map"></div> -->
+</body>
+</head>
+
+</html>

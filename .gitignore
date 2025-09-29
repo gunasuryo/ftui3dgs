@@ -1,0 +1,43 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+build/
+out/
+.tmp/
+.temp/
+
+# Environment files
+.env
+.env.*.local
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE/editor configs
+.vscode/
+.idea/
+*.swp
+
+# Cache
+.cache/
+.next/
+.vercel/
+.svelte-kit/
+.nuxt/
+.astro/
+vite-cache/
+webpack-cache/
+
+# Logs
+logs
+*.log
